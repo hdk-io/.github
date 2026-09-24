@@ -1,0 +1,136 @@
+name: HDK.io required policy
+
+'on':
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: HDK.io Policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out candidate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify repository CI contract
+        if: github.repository != 'hdk-io/.github'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          workflow_dir = Path(".github/workflows")
+          workflows = sorted(
+              path
+              for pattern in ("*.yml", "*.yaml")
+              for path in workflow_dir.glob(pattern)
+              if path.is_file()
+          )
+
+          if not workflows:
+              print("::error::No GitHub Actions workflows were found.")
+              sys.exit(1)
+
+          contract_workflow = None
+          for path in workflows:
+              lines = path.read_text(encoding="utf-8").splitlines()
+              for index, line in enumerate(lines):
+                  if not re.fullmatch(r"  repository-ci:\s*(?:#.*)?", line):
+                      continue
+
+                  has_name = False
+                  for nested in lines[index + 1:]:
+                      if re.fullmatch(r"  [A-Za-z0-9_-]+:\s*(?:#.*)?", nested):
+                          break
+                      if re.fullmatch(
+                          r"    name:\s*['\"]?Repository CI['\"]?\s*(?:#.*)?",
+                          nested,
+                      ):
+                          has_name = True
+                          break
+
+                  if has_name:
+                      contract_workflow = path
+                      break
+
+              if contract_workflow is not None:
+                  break
+
+          if contract_workflow is None:
+              print(
+                  "::error::Expected a job with id 'repository-ci' and "
+                  "name 'Repository CI'."
+              )
+              sys.exit(1)
+
+          source = contract_workflow.read_text(encoding="utf-8")
+          missing_events = [
+              event
+              for event in ("pull_request", "merge_group")
+              if re.search(rf"(?m)^  {event}:\s*(?:#.*)?$", source) is None
+          ]
+          if missing_events:
+              print(
+                  "::error::Repository CI workflow is missing required event(s): "
+                  + ", ".join(missing_events)
+              )
+              sys.exit(1)
+
+          print(f"Repository CI contract: {contract_workflow}")
+          PY
+
+      - name: Verify workflow dependency pinning
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          workflow_dir = Path(".github/workflows")
+          failures = []
+          uses_line = re.compile(r"^\s*uses:\s*([^\s#]+)")
+
+          for pattern in ("*.yml", "*.yaml"):
+              for path in sorted(workflow_dir.glob(pattern)):
+                  if not path.is_file():
+                      continue
+                  for line_number, line in enumerate(
+                      path.read_text(encoding="utf-8").splitlines(), start=1
+                  ):
+                      match = uses_line.match(line)
+                      if match is None:
+                          continue
+
+                      target = match.group(1).strip().strip("'\"")
+                      if target.startswith("./") or target.startswith("docker://"):
+                          continue
+
+                      if "@" not in target:
+                          failures.append(
+                              f"{path}:{line_number}: action has no immutable ref: {target}"
+                          )
+                          continue
+
+                      ref = target.rsplit("@", 1)[1]
+                      if re.fullmatch(r"[0-9a-f]{40}", ref) is None:
+                          failures.append(
+                              f"{path}:{line_number}: action must be pinned to a "
+                              f"40-character commit SHA: {target}"
+                          )
+
+          if failures:
+              for failure in failures:
+                  print(f"::error::{failure}")
+              sys.exit(1)
+
+          print("All remote workflow dependencies are commit-SHA pinned.")
+          PY
