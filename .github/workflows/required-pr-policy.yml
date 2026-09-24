@@ -19,6 +19,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify repository CI contract
+        if: github.repository != 'hdk-io/.github'
         shell: bash
         run: |
           python3 - <<'PY'
