@@ -10,7 +10,7 @@ permissions:
 jobs:
   policy:
     name: HDK.io Policy
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER_LABELS || '["ubuntu-24.04"]') }}
     timeout-minutes: 5
     steps:
       - name: Check out candidate revision
