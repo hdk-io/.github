@@ -87,45 +87,71 @@ jobs:
           print(f"Repository CI contract: {contract_workflow}")
           PY
 
+      # Keep the parser and scanner independent of candidate repository code.
+      - name: Install pinned workflow parser
+        shell: bash
+        run: |
+          python3 -I -m venv "$RUNNER_TEMP/hdk-policy-python"
+          "$RUNNER_TEMP/hdk-policy-python/bin/python3" -I -m pip install --disable-pip-version-check --no-deps 'PyYAML==6.0.3'
+          echo "$RUNNER_TEMP/hdk-policy-python/bin" >> "$GITHUB_PATH"
+
+      - name: Test workflow dependency policy
+        if: github.repository == 'hdk-io/.github'
+        shell: bash
+        run: python3 -I -m unittest discover -s tests -v
+
       - name: Verify workflow dependency pinning
         shell: bash
         run: |
-          python3 - <<'PY'
+          python3 -I - <<'PYTHON'
           from pathlib import Path
           import re
           import sys
+          import yaml
 
           workflow_dir = Path(".github/workflows")
           failures = []
-          uses_line = re.compile(r"^\s*uses:\s*([^\s#]+)")
+
+          def check_uses(container, location):
+              if "uses" not in container:
+                  return
+              target = container["uses"]
+              if not isinstance(target, str) or not target.strip():
+                  failures.append(f"{location}: uses must be a nonempty string")
+                  return
+              target = target.strip()
+              if target.startswith("./") or target.startswith("docker://"):
+                  return
+              if "@" not in target:
+                  failures.append(f"{location}: action has no immutable ref: {target}")
+              elif re.fullmatch(r"[0-9a-f]{40}", target.rsplit("@", 1)[1]) is None:
+                  failures.append(
+                      f"{location}: action must be pinned to a "
+                      f"40-character commit SHA: {target}"
+                  )
 
           for pattern in ("*.yml", "*.yaml"):
               for path in sorted(workflow_dir.glob(pattern)):
                   if not path.is_file():
                       continue
-                  for line_number, line in enumerate(
-                      path.read_text(encoding="utf-8").splitlines(), start=1
-                  ):
-                      match = uses_line.match(line)
-                      if match is None:
-                          continue
-
-                      target = match.group(1).strip().strip("'\"")
-                      if target.startswith("./") or target.startswith("docker://"):
-                          continue
-
-                      if "@" not in target:
-                          failures.append(
-                              f"{path}:{line_number}: action has no immutable ref: {target}"
-                          )
-                          continue
-
-                      ref = target.rsplit("@", 1)[1]
-                      if re.fullmatch(r"[0-9a-f]{40}", ref) is None:
-                          failures.append(
-                              f"{path}:{line_number}: action must be pinned to a "
-                              f"40-character commit SHA: {target}"
-                          )
+                  try:
+                      workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+                      if not isinstance(workflow, dict) or not isinstance(workflow.get("jobs"), dict):
+                          raise ValueError("workflow jobs must be a mapping")
+                      for job_id, job in workflow["jobs"].items():
+                          location = f"{path}:jobs.{job_id}"
+                          if not isinstance(job, dict):
+                              raise ValueError(f"{location} must be a mapping")
+                          check_uses(job, location)
+                          steps = job.get("steps", [])
+                          if not isinstance(steps, list):
+                              raise ValueError(f"{location}.steps must be a sequence")
+                          for index, step in enumerate(steps):
+                              if not isinstance(step, dict):
+                                  raise ValueError(f"{location}.steps[{index}] must be a mapping")
+                              check_uses(step, f"{location}.steps[{index}]")
+                  except (OSError, ValueError, yaml.YAMLError) as exc:
+                      failures.append(f"{path}: cannot inspect workflow: {exc}")
 
           if failures:
               for failure in failures:
@@ -133,4 +159,4 @@ jobs:
               sys.exit(1)
 
           print("All remote workflow dependencies are commit-SHA pinned.")
-          PY
+          PYTHON
