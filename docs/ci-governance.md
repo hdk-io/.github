@@ -231,4 +231,3 @@ as `repository-ci` continues to aggregate the complete merge-critical dependency
 
 Changes to the central policy workflow should be reviewed as organization governance
 changes because they affect every enrolled repository.
-
