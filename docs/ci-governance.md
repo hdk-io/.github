@@ -1,6 +1,25 @@
 # HDK.io CI governance design
 
-Status: initial implementation
+Status: organization merge-gate contract; deployed ruleset enforcement must be verified separately.
+
+## Convention ownership and navigation
+
+This repository owns the organization merge-gate contract and central policy workflow.
+Repository owners own their build/test implementation and final `Repository CI` aggregator.
+[Infrastructure workflow conventions](https://github.com/hdk-io/infrastructure/blob/main/docs/08-workflow-conventions.md)
+define human-facing naming and privileged lifecycle vocabulary; they reference this
+contract rather than redefining organization policy.
+[Infrastructure's document index](https://github.com/hdk-io/infrastructure/blob/main/docs/README.md)
+identifies current operating amendments, service delivery and qualification requirements.
+
+Application/service repositories own source, tests, builds and image publication.
+Infrastructure owns registrations, environment/namespace bindings and selected immutable
+release digests. Deployments use its approved broker; service code must not receive
+bootstrap or production kubeconfigs. Organization-secret visibility and GitHub Environment
+protections are separate controls; central management does not imply all-repository access.
+
+These documents describe requirements and repository implementation, not independently
+verified active rulesets, secret visibility or live production qualification.
 
 ## Purpose
 
@@ -212,3 +231,4 @@ as `repository-ci` continues to aggregate the complete merge-critical dependency
 
 Changes to the central policy workflow should be reviewed as organization governance
 changes because they affect every enrolled repository.
+
