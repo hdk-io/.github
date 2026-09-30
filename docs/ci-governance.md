@@ -4,6 +4,10 @@ Status: organization merge-gate contract; deployed ruleset enforcement must be v
 
 ## Convention ownership and navigation
 
+Shared ownership and layout follow [HDK-ADR-001 rev 2](decisions/2026-09-30-repository-ownership.md)
+and [repository structure](repository-structure.md). Organization naming is owned here;
+the linked infrastructure lifecycle guidance remains its detailed reference.
+
 This repository owns the organization merge-gate contract and central policy workflow.
 Repository owners own their build/test implementation and final `Repository CI` aggregator.
 [Infrastructure workflow conventions](https://github.com/hdk-io/infrastructure/blob/main/docs/08-workflow-conventions.md)
